@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
+from integration import linkTransactionToInventory
 
 def addTransactionForm(parent, cursor, conn, refreshCallback=None):
     window = tk.Toplevel(parent)
@@ -45,6 +46,61 @@ def addTransactionForm(parent, cursor, conn, refreshCallback=None):
     categoryCombo = ttk.Combobox(frame, width=28, state="readonly")
     categoryCombo.grid(row=4, column=1, columnspan=2, sticky="w", pady=5)
     
+    # Add inventory section (collapsible)
+    inventoryFrame = ttk.LabelFrame(frame, text="Povezivanje s Inventarom (opcionalno)", padding=10)
+    inventoryFrame.grid(row=11, column=0, columnspan=3, sticky="we", pady=10)
+    
+    # Article selection
+    ttk.Label(inventoryFrame, text="Artikl iz inventara:").grid(row=0, column=0, sticky="w", pady=5)
+    artiklCombo = ttk.Combobox(inventoryFrame, width=35, state="readonly")
+    artiklCombo.grid(row=0, column=1, columnspan=2, sticky="w", pady=5)
+    
+    # Load articles
+    cursor.execute("SELECT id, sku, naziv FROM ARTIKLZALIHE ORDER BY naziv")
+    artikli = cursor.fetchall()
+    artiklDict = {f"{a['sku']} - {a['naziv']}": a['id'] for a in artikli}
+    artiklCombo['values'] = ["Nije povezano s inventarom"] + list(artiklDict.keys())
+    artiklCombo.set("Nije povezano s inventarom")
+    
+    # Quantity
+    ttk.Label(inventoryFrame, text="Količina:").grid(row=1, column=0, sticky="w", pady=5)
+    kolicinaEntry = ttk.Entry(inventoryFrame, width=15)
+    kolicinaEntry.grid(row=1, column=1, sticky="w", pady=5)
+    
+    # Unit price (auto-filled from inventory if available)
+    ttk.Label(inventoryFrame, text="Jedinična cijena:").grid(row=2, column=0, sticky="w", pady=5)
+    jedinicnaCijenaEntry = ttk.Entry(inventoryFrame, width=15)
+    jedinicnaCijenaEntry.grid(row=2, column=1, sticky="w", pady=5)
+    
+    # Location
+    ttk.Label(inventoryFrame, text="Lokacija:").grid(row=3, column=0, sticky="w", pady=5)
+    lokacijaEntry = ttk.Entry(inventoryFrame, width=15)
+    lokacijaEntry.grid(row=3, column=1, sticky="w", pady=5)
+    
+    # Transaction type (purchase/sale)
+    ttk.Label(inventoryFrame, text="Tip inventara:").grid(row=4, column=0, sticky="w", pady=5)
+    inventoryTypeVar = tk.StringVar(value="nabava")
+    ttk.Radiobutton(inventoryFrame, text="Nabava", variable=inventoryTypeVar, value="nabava").grid(row=4, column=1, sticky="w")
+    ttk.Radiobutton(inventoryFrame, text="Prodaja", variable=inventoryTypeVar, value="prodaja").grid(row=4, column=2, sticky="w")
+
+    # Function to auto-fill price when article is selected
+    def onArticleSelect(event):
+        selected = artiklCombo.get()
+        if selected in artiklDict:
+            art_id = artiklDict[selected]
+            cursor.execute("SELECT nabavnaCijena, prodajnaCijena FROM ARTIKLZALIHE WHERE id = ?", (art_id,))
+            art = cursor.fetchone()
+            if art:
+                if inventoryTypeVar.get() == "nabava":
+                    jedinicnaCijenaEntry.delete(0, tk.END)
+                    jedinicnaCijenaEntry.insert(0, str(art['nabavnaCijena']))
+                else:
+                    jedinicnaCijenaEntry.delete(0, tk.END)
+                    jedinicnaCijenaEntry.insert(0, str(art['prodajnaCijena']))
+    
+    artiklCombo.bind("<<ComboboxSelected>>", onArticleSelect)
+    inventoryTypeVar.trace_add('write', lambda *args: onArticleSelect(None))
+
     def updateCategories(*args):
         vrsta = vrstaVar.get()
         cursor.execute("SELECT id, ime FROM ACCTOSKATEGORIJE WHERE vrsta = ? ORDER BY ime", (vrsta,))
@@ -54,7 +110,7 @@ def addTransactionForm(parent, cursor, conn, refreshCallback=None):
         if categories:
             categoryCombo.set(categories[0]['ime'])
     
-    vrstaVar.trace('w', updateCategories)
+    vrstaVar.trace_add('write', updateCategories)
     updateCategories()
     
     # Supplier/Client
@@ -134,6 +190,40 @@ def addTransactionForm(parent, cursor, conn, refreshCallback=None):
             iznosPoreza=iznosPoreza,
             napomene=napomeneText.get("1.0", tk.END).strip() or None
         )
+
+        if transactionId:
+            # Check if inventory linking is requested
+            selectedArtikl = artiklCombo.get()
+            if selectedArtikl != "Nije povezano s inventarom" and selectedArtikl in artiklDict:
+                try:
+                    artiklId = artiklDict[selectedArtikl]
+                    kolicina = int(kolicinaEntry.get().strip())
+                    jedinicnaCijena = float(jedinicnaCijenaEntry.get().strip())
+                    lokacija = lokacijaEntry.get().strip()
+                    
+                    # Link to inventory
+                    success, message = linkTransactionToInventory(
+                        cursor, conn,
+                        transactionId,
+                        artiklId,
+                        kolicina,
+                        jedinicnaCijena,
+                        inventoryTypeVar.get(),
+                        lokacija or None
+                    )
+                    
+                    if not success:
+                        messagebox.showwarning("Upozorenje", f"Transakcija dodana, ali nije povezana s inventarom: {message}")
+                
+                except ValueError:
+                    messagebox.showwarning("Upozorenje", "Transakcija dodana, ali nije povezana s inventarom zbog neispravnih podataka")
+            
+            messagebox.showinfo("Uspjeh", f"Transakcija dodana pod ID: {transactionId}")
+            if refreshCallback:
+                refreshCallback()
+            window.destroy()
+        else:
+            messagebox.showerror("Greška", "Transakcija nije dodana!")
         
         if transactionId:
             messagebox.showinfo("Uspjeh", f"Transakcija dodana pod ID: {transactionId}")

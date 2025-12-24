@@ -286,6 +286,41 @@ def createTransactionsTab(parent, cursor, conn):
                         })
                 
                 messagebox.showinfo("Uspjeh", f"Transakcije izvezene u: {file_path}")
+
+    def onViewLinkedInventory():
+        selected_items = tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Upozorenje", "Odaberite transakciju!")
+            return
+        
+        selected_item = selected_items[0]
+        trans_id = tree.item(selected_item)["values"][0]
+        
+        from integration import getInventoryTransactionsForFinancialTransaction
+        inventory_trans = getInventoryTransactionsForFinancialTransaction(cursor, trans_id)
+        
+        win = tk.Toplevel(frame)
+        win.title(f"Povezani inventar za transakciju #{trans_id}")
+        win.geometry("900x400")
+        
+        t = ttk.Treeview(win, columns=("ID", "Artikl", "SKU", "Količina", "Jed. cijena", "Ukupno", "Tip", "Lokacija"), show="headings")
+        for c in ("ID", "Artikl", "SKU", "Količina", "Jed. cijena", "Ukupno", "Tip", "Lokacija"):
+            t.heading(c, text=c)
+        
+        for inv in inventory_trans:
+            t.insert("", "end", values=(
+                inv['id'],
+                inv['artiklNaziv'],
+                inv['sku'],
+                inv['kolicina'],
+                f"{inv['jedinicnaCijena']:.2f}",
+                f"{inv['ukupanIznos']:.2f}",
+                inv['tipTransakcije'],
+                inv['uLokaciju'] or inv['izLokacije'] or ''
+            ))
+        
+        t.pack(fill="both", expand=True, padx=10, pady=10)
+
     
     ttk.Button(btnFrame, text="Nova Transakcija", command=onAddTransaction).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Uredi", command=onEditTransaction).pack(side="left", padx=5)
@@ -293,6 +328,7 @@ def createTransactionsTab(parent, cursor, conn):
     ttk.Button(btnFrame, text="Uskladi/Odskladi", command=onToggleReconciliation).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Izvezi CSV", command=onExport).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Osvježi", command=refreshTransactions).pack(side="left", padx=5)
+    ttk.Button(btnFrame, text="Povezani inventar", command=onViewLinkedInventory).pack(side="left", padx=5)
     
     scrollbar = ttk.Scrollbar(treeFrame, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar.set)

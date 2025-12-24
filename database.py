@@ -130,7 +130,7 @@ class Database:
             uLokaciju TEXT,
             napomene TEXT,
             datumKreiranja TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(artiklId) REFERENCES ArtikliZalihe(id),
+            FOREIGN KEY(artiklId) REFERENCES ARTIKLZALIHE(id),
             FOREIGN KEY(povezaniTransakcijaId) REFERENCES ACCTOSTRANSAKCIJE (id)
         )
 

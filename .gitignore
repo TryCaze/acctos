@@ -42,3 +42,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Database files
+*.sqlite3
+*.db
+acctos.db

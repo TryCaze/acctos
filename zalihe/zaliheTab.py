@@ -254,6 +254,40 @@ def createInventoryTab(parent, cursor, conn):
         if sel:
             onEditItem()
 
+    def onViewLinkedTransactions():
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Upozorenje", "Odaberite artikl za pregled transakcija.")
+            return
+        
+        item = tree.item(sel[0])['values']
+        artiklId = item[0]
+        
+        from ..integration import getFinancialTransactionsForInventoryItem
+        transactions = getFinancialTransactionsForInventoryItem(cursor, artiklId)
+        
+        win = tk.Toplevel(frame)
+        win.title("Povezane financijske transakcije")
+        win.geometry("1000x400")
+        
+        t = ttk.Treeview(win, columns=("ID", "Datum", "Račun", "Opis", "Iznos", "Vrsta", "Inventar Količina", "Tip"), show="headings")
+        for c in ("ID", "Datum", "Račun", "Opis", "Iznos", "Vrsta", "Inventar Količina", "Tip"):
+            t.heading(c, text=c)
+        
+        for trans in transactions:
+            t.insert("", "end", values=(
+                trans['id'],
+                trans['datum'],
+                trans.get('racunNaziv', ''),
+                (trans['opis'] or "")[:50],
+                f"{trans['iznos']:.2f}",
+                trans['vrsta'],
+                trans['inventarKolicina'],
+                trans['tipTransakcije']
+            ))
+        
+        t.pack(fill="both", expand=True, padx=10, pady=10)
+
     # Buttons
     ttk.Button(btnFrame, text="Novi Artikl", command=onAddItem).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Uredi", command=onEditItem).pack(side="left", padx=5)
@@ -263,6 +297,7 @@ def createInventoryTab(parent, cursor, conn):
     ttk.Button(btnFrame, text="Transakcije", command=onViewTransactions).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Statistika", command=onViewStatistics).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Osvježi", command=refreshItems).pack(side="left", padx=5)
+    ttk.Button(btnFrame, text="Povezane trans.", command=onViewLinkedTransactions).pack(side="left", padx=5)
 
     # scrollbar and pack
     scrollbar = ttk.Scrollbar(treeFrame, orient="vertical", command=tree.yview)

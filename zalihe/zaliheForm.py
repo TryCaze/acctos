@@ -1,3 +1,4 @@
+from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 from .zalihe import getSuppliers, addItem, editItem, addStockEntry, getItemById
@@ -169,6 +170,24 @@ def addStockForm(parent, cursor, conn, artiklId, artiklNaziv, refreshCallback=No
             ent.grid(row=i, column=1, padx=5, pady=5, sticky="we")
             fields[key] = ent
 
+    # Add option to create financial transaction
+    createTransactionVar = tk.BooleanVar(value=False)
+    ttk.Checkbutton(form, text="Kreiraj financijsku transakciju", variable=createTransactionVar).grid(
+        row=len(labels) + 1, column=0, columnspan=2, pady=10
+    )
+    
+    # Account selection for financial transaction
+    ttk.Label(form, text="Račun za transakciju:").grid(row=len(labels) + 2, column=0, sticky="e", padx=5, pady=5)
+    accountCombo = ttk.Combobox(form, width=35, state="readonly")
+    accountCombo.grid(row=len(labels) + 2, column=1, padx=5, pady=5, sticky="we")
+    
+    # Load accounts
+    cursor.execute("SELECT id, naziv FROM ACCTOSRACUNI ORDER BY naziv")
+    accounts = cursor.fetchall()
+    accountCombo['values'] = [f"{a['id']} - {a['naziv']}" for a in accounts]
+    if accounts:
+        accountCombo.set(f"{accounts[0]['id']} - {accounts[0]['naziv']}")
+
     def onSave():
         data = {}
         for key, widget in fields.items():
@@ -176,12 +195,53 @@ def addStockForm(parent, cursor, conn, artiklId, artiklNaziv, refreshCallback=No
                 data[key] = widget.get("1.0", "end").strip()
             else:
                 data[key] = widget.get().strip()
-        # validate količina
+        
+        # Validate količina
         try:
-            data['kolicina'] = int(data.get('kolicina') or 0)
+            kolicina = int(data.get('kolicina') or 0)
         except:
             messagebox.showwarning("Upozorenje", "Količina mora biti cijeli broj.")
             return
+        
+        # Check if financial transaction should be created
+        if createTransactionVar.get():
+            try:
+                selected_account = accountCombo.get()
+                account_id = int(selected_account.split("-")[0].strip())
+                
+                from ..transakcije import addTransaction
+                
+                # Create financial transaction
+                total_amount = kolicina * float(data.get('nabavnaCijena') or 0)
+                transaction_type = "rashod" if kolicina > 0 else "prihod"
+                
+                trans_id = addTransaction(
+                    cursor, conn,
+                    datum=datetime.now().strftime("%Y-%m-%d"),
+                    iznos=total_amount,
+                    vrsta=transaction_type,
+                    racunId=account_id,
+                    dobavljacKlijent=data.get('dobavljacKupac'),
+                    opis=f"Nabava artikla: {artiklNaziv}",
+                    brojRacuna=data.get('brojSerije')
+                )
+                
+                if trans_id:
+                    # Link to inventory transaction
+                    from ..integration import linkTransactionToInventory
+                    linkTransactionToInventory(
+                        cursor, conn,
+                        trans_id,
+                        artiklId,
+                        kolicina,
+                        float(data.get('nabavnaCijena') or 0),
+                        'nabava' if kolicina > 0 else 'povrat',
+                        data.get('lokacija')
+                    )
+            except Exception as e:
+                messagebox.showwarning("Upozorenje", f"Inventar ažuriran, ali financijska transakcija nije kreirana: {e}")
+        
+        # Always update inventory
         success, msg = addStockEntry(cursor, conn, artiklId, data)
         if success:
             messagebox.showinfo("Uspjeh", msg)

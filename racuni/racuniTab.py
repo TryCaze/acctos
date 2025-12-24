@@ -178,7 +178,7 @@ def createAccountsTab(parent, cursor, conn):
 
     categoryTree.bind("<<TreeviewSelect>>", onSelect)
 
-    ttk.Button(btnFrame, text="Nova Kategorija", command=lambda: onAddAccount()).pack(side="left", padx=5)
+    ttk.Button(btnFrame, text="Novi račun", command=lambda: onAddAccount()).pack(side="left", padx=5)
     ttk.Button(btnFrame, text="Osvježi", command=lambda: refreshAccounts()).pack(side="left", padx=5)
 
     refreshAccounts()
